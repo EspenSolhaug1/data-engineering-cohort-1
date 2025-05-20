@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
+import pandas as pd
 
 app = FastAPI()
 
@@ -8,20 +9,51 @@ class Customer(BaseModel):
     name: str
     total_spent: float
 
+
+# Simulate data (copy from .ipynb)
+customers = pd.DataFrame({
+    'customer_id': [101, 102, 103, 104,105],
+    'name': ['Alice', 'Bob', 'Charlie', 'Diana', 'Eric'],
+    'signup_date': pd.to_datetime(['2023-01-15', '2023-02-01', '2023-03-20', '2023-04-05', '2023-04-05']),
+    'region': ['North', 'South', 'North', 'East', 'East']
+})
+
+
+orders = pd.DataFrame({
+    'order_id': range(1, 11),
+    'customer_id': [101, 102, 101, 103, 102, 104, 104, 101, 103, 104],
+    'amount': [100, 150, 200, 130, 170, 120, 180, 90, 200, 220],
+    'order_date': pd.to_datetime([
+        '2023-03-01', '2023-03-05', '2023-03-07', '2023-03-15', '2023-03-22',
+        '2023-03-25', '2023-04-01', '2023-04-02', '2023-04-04', '2023-04-10'
+    ])
+})
+
+# 
+merged = orders.merge(customers, on='customer_id', how='left')
+
+spentPerCustomer = merged.groupby(['customer_id', 'name']).agg(
+    total_spent=('amount', 'sum')
+    ).reset_index()
+
 @app.get("/")
 def root():
     return {"message": "Welcome to the Data API"}
 
 @app.get("/customers/top")
 def top_customers():
-    return [
-        {"id": 102, "name": "Bob", "total_spent": 320},
-        {"id": 101, "name": "Alice", "total_spent": 300},
-        {"id": 103, "name": "Charlie", "total_spent": 130}
-    ]
+        # Sort by total_spent, take top 3
+        top = spentPerCustomer.sort_values(by='total_spent').head(3)
+        return top.to_dict(orient='records');
 
 @app.get("/customer/{customer_id}")
 def get_customer(customer_id: int):
-    if customer_id == 101:
-        return {"name": "Alice", "total_spent": 300}
-    return {"error": "Customer not found"}
+    customer = spentPerCustomer[spentPerCustomer['customer_id'] == customer_id]
+    if customer.empty:
+        return {'error': 'Customer not found'}
+    row = customer.iloc[0]
+    return Customer(
+         id=int(row['customer_id']),
+         name=str(row['name']),
+         total_spent=float(row['total_spent'])
+    )
