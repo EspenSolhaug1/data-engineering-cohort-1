@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
@@ -30,7 +31,7 @@ orders = pd.DataFrame({
 })
 
 # 
-merged = orders.merge(customers, on='customer_id', how='left')
+merged = customers.merge(orders, on='customer_id', how='left')
 
 spentPerCustomer = merged.groupby(['customer_id', 'name']).agg(
     total_spent=('amount', 'sum')
@@ -43,7 +44,7 @@ def root():
 @app.get("/customers/top")
 def top_customers():
         # Sort by total_spent, take top 3
-        top = spentPerCustomer.sort_values(by='total_spent').head(3)
+        top = spentPerCustomer.sort_values(by='total_spent', ascending=False).head(3)
         return top.to_dict(orient='records');
 
 @app.get("/customer/{customer_id}")
@@ -57,3 +58,11 @@ def get_customer(customer_id: int):
          name=str(row['name']),
          total_spent=float(row['total_spent'])
     )
+
+@app.get("/customer/early_orders/")
+def get_early_orders(days: Optional[int] = 30):
+     merged['days_since_signup'] = (merged['order_date'] - merged['signup_date']).dt.days
+     early_orders = merged[merged['days_since_signup'] <= days]
+     if early_orders.empty:
+          return {'error': f"No customer placed orders within {days} days"}
+     return early_orders.sort_values(by='days_since_signup').to_dict(orient='records')
